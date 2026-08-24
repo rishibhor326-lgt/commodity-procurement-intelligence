@@ -8,3 +8,8 @@ data/raw/*
 data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+
+data/historical/*
+data/model/*
+!data/historical/.gitkeep
+!data/model/.gitkeep
