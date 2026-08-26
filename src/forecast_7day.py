@@ -3,16 +3,21 @@ import pickle
 
 import pandas as pd
 
-DATA_FILE = Path("data/historical/maharashtra_onion_2026_02_to_07.csv")
+from project_config import HISTORICAL_FILE, MARKET
+
+DATA_FILE = Path(HISTORICAL_FILE)
 MODEL_FILE = Path("data/model/linear_regression_model.pkl")
 OUTPUT_FILE = Path("data/model/forecast_7day.csv")
 
-MARKET = "Pune(Pimpri) APMC"
 FORECAST_DAYS = 7
 
 
 def main():
-    df = pd.read_csv(DATA_FILE, parse_dates=["arrival_date"])
+
+    df = pd.read_csv(
+        DATA_FILE,
+        parse_dates=["arrival_date"],
+    )
 
     df = (
         df[df["market"] == MARKET]
@@ -20,6 +25,11 @@ def main():
         .reset_index(drop=True)
         .copy()
     )
+
+    if len(df) < 14:
+        raise ValueError(
+            f"Not enough historical data for market: {MARKET}"
+        )
 
     with open(MODEL_FILE, "rb") as file:
         saved = pickle.load(file)
@@ -36,6 +46,7 @@ def main():
     forecasts = []
 
     for step in range(1, FORECAST_DAYS + 1):
+
         forecast_date = latest_date + pd.Timedelta(days=step)
 
         row = {
@@ -53,28 +64,43 @@ def main():
 
         X = pd.DataFrame([row])[features]
 
-        predicted_price = float(model.predict(X)[0])
+        predicted_price = float(
+            model.predict(X)[0]
+        )
 
         forecasts.append(
             {
                 "forecast_date": forecast_date.date(),
-                "predicted_modal_price": round(predicted_price, 2),
+                "predicted_modal_price": round(
+                    predicted_price,
+                    2,
+                ),
             }
         )
 
         prices.append(predicted_price)
 
-        # Future arrivals are unknown, so we temporarily
-        # carry forward the latest known arrival quantity.
         arrivals.append(last_arrival)
 
     forecast_df = pd.DataFrame(forecasts)
 
-    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    forecast_df.to_csv(OUTPUT_FILE, index=False)
+    OUTPUT_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    forecast_df.to_csv(
+        OUTPUT_FILE,
+        index=False,
+    )
 
     print("=== 7-DAY PRICE FORECAST ===")
-    print(forecast_df.to_string(index=False))
+    print("Selected market:", MARKET)
+
+    print(
+        forecast_df.to_string(index=False)
+    )
+
     print("\nSaved:", OUTPUT_FILE)
 
 

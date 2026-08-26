@@ -4,6 +4,8 @@ import time
 import pandas as pd
 import requests
 
+from project_config import COMMODITY, COMMODITY_ID, HISTORICAL_FILE
+
 
 URL = "https://api.agmarknet.gov.in/v1/prices-and-arrivals/date-wise/specific-commodity"
 
@@ -103,13 +105,13 @@ def main():
             year=year,
             month=month,
             state_id=20,
-            commodity_id=23,
+            commodity_id=COMMODITY_ID,
         )
 
         rows = flatten_records(
             payload,
             state_name="Maharashtra",
-            commodity_name="Onion",
+            commodity_name=COMMODITY,
         )
 
         all_rows.extend(rows)
@@ -135,10 +137,7 @@ def main():
     output_dir = Path("data/historical")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_file = (
-        output_dir /
-        "maharashtra_onion_2026_02_to_07.csv"
-    )
+    output_file = Path(HISTORICAL_FILE)
 
     df.to_csv(output_file, index=False)
 

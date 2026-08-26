@@ -2,14 +2,18 @@ from pathlib import Path
 
 import pandas as pd
 
-DATA_FILE = Path("data/historical/maharashtra_onion_2026_02_to_07.csv")
-OUTPUT_FILE = Path("data/model/recent_7day_summary.csv")
+from project_config import HISTORICAL_FILE, MARKET
 
-MARKET = "Pune(Pimpri) APMC"
+DATA_FILE = Path(HISTORICAL_FILE)
+OUTPUT_FILE = Path("data/model/recent_7day_summary.csv")
 
 
 def main():
-    df = pd.read_csv(DATA_FILE, parse_dates=["arrival_date"])
+
+    df = pd.read_csv(
+        DATA_FILE,
+        parse_dates=["arrival_date"],
+    )
 
     df = (
         df[df["market"] == MARKET]
@@ -18,10 +22,24 @@ def main():
         .copy()
     )
 
-    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(OUTPUT_FILE, index=False)
+    if df.empty:
+        raise ValueError(
+            f"No recent price data found for market: {MARKET}"
+        )
+
+    OUTPUT_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    df.to_csv(
+        OUTPUT_FILE,
+        index=False,
+    )
 
     print("=== LATEST 7-DAY PRICE SUMMARY ===")
+    print("Selected market:", MARKET)
+
     print(
         df[
             [
@@ -34,9 +52,21 @@ def main():
         ].to_string(index=False)
     )
 
-    print("\n7-day minimum modal price:", df["modal_price"].min())
-    print("7-day maximum modal price:", df["modal_price"].max())
-    print("7-day average modal price:", round(df["modal_price"].mean(), 2))
+    print(
+        "\n7-day minimum modal price:",
+        df["modal_price"].min(),
+    )
+
+    print(
+        "7-day maximum modal price:",
+        df["modal_price"].max(),
+    )
+
+    print(
+        "7-day average modal price:",
+        round(df["modal_price"].mean(), 2),
+    )
+
     print("Saved:", OUTPUT_FILE)
 
 

@@ -13,3 +13,8 @@ data/historical/*
 data/model/*
 !data/historical/.gitkeep
 !data/model/.gitkeep
+!data/historical/maharashtra_onion_2026_02_to_07.csv
+!data/historical/maharashtra_tomato_2026_02_to_07.csv
+!data/historical/maharashtra_potato_2026_02_to_07.csv
+!data/historical/maharashtra_rice_2026_02_to_07.csv
+!data/historical/maharashtra_wheat_2026_02_to_07.csv
