@@ -11,7 +11,53 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("Commodity Procurement Intelligence Dashboard")
+
+st.markdown("""
+<style>
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+}
+
+h1 {
+    font-size: 2.4rem !important;
+    font-weight: 700 !important;
+}
+
+[data-testid="stMetric"] {
+    background: #1e222a;
+    border: 1px solid #343a46;
+    padding: 18px;
+    border-radius: 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.20);
+}
+
+[data-testid="stMetricLabel"] {
+    font-weight: 600;
+    color: #b7bdc8 !important;
+}
+
+[data-testid="stMetricValue"] {
+    color: #ffffff !important;
+}
+
+div[data-testid="stButton"] > button {
+    width: 100%;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+div[data-testid="stSelectbox"] {
+    margin-bottom: 8px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.title("Commodity Procurement Intelligence")
+st.caption(
+    "Procurement-focused commodity price monitoring, "
+    "forecasting and decision intelligence."
+)
 
 COMMODITIES = ["Onion", "Tomato", "Potato", "Rice", "Wheat"]
 
