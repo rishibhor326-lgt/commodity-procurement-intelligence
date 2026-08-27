@@ -2,6 +2,7 @@ from pathlib import Path
 import time
 
 import pandas as pd
+from datetime import datetime
 import requests
 
 from project_config import COMMODITY, COMMODITY_ID, HISTORICAL_FILE
@@ -89,13 +90,11 @@ def flatten_records(payload, state_name, commodity_name):
 
 
 def main():
+    today = datetime.now()
+
     months = [
-        (2026, 2),
-        (2026, 3),
-        (2026, 4),
-        (2026, 5),
-        (2026, 6),
-        (2026, 7),
+        (2026, month)
+        for month in range(2, today.month + 1)
     ]
 
     all_rows = []

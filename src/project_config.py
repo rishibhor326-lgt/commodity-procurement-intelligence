@@ -25,7 +25,7 @@ COMMODITY_ID = COMMODITY_MAP[COMMODITY]
 
 HISTORICAL_FILE = (
     f"data/historical/"
-    f"maharashtra_{COMMODITY.lower()}_2026_02_to_07.csv"
+    f"maharashtra_{COMMODITY.lower()}_latest.csv"
 )
 
 FEATURE_FILE = (

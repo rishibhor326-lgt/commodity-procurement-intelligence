@@ -22,8 +22,21 @@ selected_commodity = st.selectbox(
 
 historical_file = (
     f"data/historical/"
-    f"maharashtra_{selected_commodity.lower()}_2026_02_to_07.csv"
+    f"maharashtra_{selected_commodity.lower()}_latest.csv"
 )
+
+if not os.path.exists(historical_file):
+    env = os.environ.copy()
+    env["PROCUREMENT_COMMODITY"] = selected_commodity
+
+    with st.spinner(
+        f"Fetching latest {selected_commodity} market data..."
+    ):
+        subprocess.run(
+            ["python", "src/historical_ingestion.py"],
+            check=True,
+            env=env,
+        )
 
 historical_df = pd.read_csv(historical_file)
 
@@ -49,6 +62,12 @@ if st.button("Generate Forecast"):
 
         env["PROCUREMENT_COMMODITY"] = selected_commodity
         env["PROCUREMENT_MARKET"] = selected_market
+
+        subprocess.run(
+            ["python", "src/historical_ingestion.py"],
+            check=True,
+            env=env,
+        )
 
         subprocess.run(
             ["python", "src/run_pipeline.py"],
