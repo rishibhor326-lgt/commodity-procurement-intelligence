@@ -2,6 +2,7 @@ import os
 import subprocess
 
 import pandas as pd
+import altair as alt
 import requests
 import streamlit as st
 
@@ -233,8 +234,55 @@ try:
         how="outer"
     ).sort_values("date")
 
-    st.line_chart(
-        chart_df.set_index("date")
+    chart_long = chart_df.melt(
+        id_vars=["date"],
+        value_vars=["Actual", "Forecast"],
+        var_name="Price Type",
+        value_name="Price"
+    ).dropna()
+
+    price_chart = (
+        alt.Chart(chart_long)
+        .mark_line(point=True, strokeWidth=3)
+        .encode(
+            x=alt.X(
+                "date:T",
+                title="Date",
+                axis=alt.Axis(format="%d %b", labelAngle=0)
+            ),
+            y=alt.Y(
+                "Price:Q",
+                title="Price (₹/Quintal)",
+                scale=alt.Scale(zero=False)
+            ),
+            color=alt.Color(
+                "Price Type:N",
+                title=None
+            ),
+            tooltip=[
+                alt.Tooltip(
+                    "date:T",
+                    title="Date",
+                    format="%d %b %Y"
+                ),
+                alt.Tooltip(
+                    "Price Type:N",
+                    title="Type"
+                ),
+                alt.Tooltip(
+                    "Price:Q",
+                    title="Price",
+                    format=",.0f"
+                ),
+            ]
+        )
+        .properties(height=420)
+        .interactive()
+    )
+
+    st.altair_chart(
+        price_chart,
+        use_container_width=True
     )
 
     st.divider()

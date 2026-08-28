@@ -1,6 +1,7 @@
 import subprocess
 
 steps = [
+    "src/historical_cleaning.py",
     "src/feature_engineering.py",
     "src/temporal_split.py",
     "src/train_model.py",

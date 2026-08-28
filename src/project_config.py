@@ -28,6 +28,11 @@ HISTORICAL_FILE = (
     f"maharashtra_{COMMODITY.lower()}_latest.csv"
 )
 
+CLEANED_HISTORICAL_FILE = (
+    f"data/processed/"
+    f"maharashtra_{COMMODITY.lower()}_clean.csv"
+)
+
 FEATURE_FILE = (
     f"data/processed/"
     f"selected_market_{COMMODITY.lower()}_features.csv"

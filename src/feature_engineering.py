@@ -3,12 +3,12 @@ from pathlib import Path
 import pandas as pd
 
 from project_config import (
+    CLEANED_HISTORICAL_FILE,
     FEATURE_FILE,
-    HISTORICAL_FILE,
     MARKET,
 )
 
-INPUT_FILE = Path(HISTORICAL_FILE)
+INPUT_FILE = Path(CLEANED_HISTORICAL_FILE)
 OUTPUT_FILE = Path(FEATURE_FILE)
 
 
