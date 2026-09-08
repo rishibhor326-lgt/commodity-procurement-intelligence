@@ -1,5 +1,6 @@
 from pathlib import Path
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 from datetime import datetime
@@ -18,7 +19,7 @@ HEADERS = {
 }
 
 
-def fetch_historical_data(year, month, state_id, commodity_id, max_retries=3):
+def fetch_historical_data(year, month, state_id, commodity_id, max_retries=1):
     params = {
         "year": year,
         "month": month,
@@ -38,7 +39,7 @@ def fetch_historical_data(year, month, state_id, commodity_id, max_retries=3):
                 URL,
                 params=params,
                 headers=HEADERS,
-                timeout=(10, 60),
+                timeout=(5, 20),
             )
 
             response.raise_for_status()
@@ -92,36 +93,46 @@ def flatten_records(payload, state_name, commodity_name):
 def main():
     today = datetime.now()
 
-    months = [
-        (2026, month)
-        for month in range(2, today.month + 1)
-    ]
+    archive_file = Path(
+        f"data/historical/maharashtra_{COMMODITY.lower()}_2026_02_to_07.csv"
+    )
+    archive = pd.read_csv(archive_file) if archive_file.exists() else pd.DataFrame()
+    archive_dates = pd.to_datetime(archive.get("arrival_date"), errors="coerce")
+    last_archive_date = archive_dates.max() if not archive.empty else pd.Timestamp(2026, 1, 31)
 
-    all_rows = []
+    first_month = (last_archive_date + pd.offsets.MonthBegin(1)).normalize()
+    current_month = pd.Timestamp(today.year, today.month, 1)
+    months = []
+    cursor = first_month
+    while cursor <= current_month:
+        months.append((cursor.year, cursor.month))
+        cursor += pd.offsets.MonthBegin(1)
 
-    for year, month in months:
-        payload = fetch_historical_data(
-            year=year,
-            month=month,
-            state_id=20,
-            commodity_id=COMMODITY_ID,
-        )
+    fresh_rows = []
+    with ThreadPoolExecutor(max_workers=min(4, max(1, len(months)))) as executor:
+        futures = {
+            executor.submit(
+                fetch_historical_data,
+                year,
+                month,
+                20,
+                COMMODITY_ID,
+            ): (year, month)
+            for year, month in months
+        }
+        for future in as_completed(futures):
+            year, month = futures[future]
+            try:
+                payload = future.result()
+            except RuntimeError as error:
+                print(f"{year}-{month:02d}: unavailable ({error})")
+                continue
+            rows = flatten_records(payload, "Maharashtra", COMMODITY)
+            fresh_rows.extend(rows)
+            print(f"{year}-{month:02d}: {len(rows)} rows")
 
-        rows = flatten_records(
-            payload,
-            state_name="Maharashtra",
-            commodity_name=COMMODITY,
-        )
-
-        all_rows.extend(rows)
-
-        print(
-            f"{year}-{month:02d}: "
-            f"{len(rows)} rows | "
-            f"Total collected: {len(all_rows)}"
-        )
-
-    df = pd.DataFrame(all_rows)
+    fresh = pd.DataFrame(fresh_rows)
+    df = pd.concat([archive, fresh], ignore_index=True)
 
     df["arrival_date"] = pd.to_datetime(
         df["arrival_date"],
@@ -131,6 +142,9 @@ def main():
 
     df = df.sort_values(
         ["arrival_date", "market", "variety"]
+    ).drop_duplicates(
+        subset=["market", "commodity", "arrival_date", "variety"],
+        keep="last",
     ).reset_index(drop=True)
 
     output_dir = Path("data/historical")
