@@ -112,8 +112,10 @@ selected_commodity = st.selectbox(
 )
 
 historical_file = (
-    f"data/historical/"
-    f"maharashtra_{selected_commodity.lower()}_latest.csv"
+    REPOSITORY_ROOT
+    / "data"
+    / "historical"
+    / f"maharashtra_{selected_commodity.lower()}_latest.csv"
 )
 
 if not os.path.exists(historical_file):
@@ -123,11 +125,24 @@ if not os.path.exists(historical_file):
     with st.spinner(
         f"Fetching latest {selected_commodity} market data..."
     ):
-        subprocess.run(
-            ["python", "src/historical_ingestion.py"],
-            check=True,
+        ingestion_result = subprocess.run(
+            [sys.executable, str(REPOSITORY_ROOT / "src" / "historical_ingestion.py")],
+            check=False,
             env=env,
+            cwd=REPOSITORY_ROOT,
+            capture_output=True,
+            text=True,
         )
+
+        if ingestion_result.returncode != 0:
+            if historical_file.exists():
+                st.warning(
+                    "Live AGMARKNET refresh is temporarily unavailable. "
+                    "Using the verified historical data stored with the project."
+                )
+            else:
+                st.error("Market data could not be downloaded and no stored data is available.")
+                st.stop()
 
 historical_df = pd.read_csv(historical_file)
 
@@ -154,16 +169,30 @@ if st.button("Generate Forecast"):
         env["PROCUREMENT_COMMODITY"] = selected_commodity
         env["PROCUREMENT_MARKET"] = selected_market
 
-        subprocess.run(
-            ["python", "src/historical_ingestion.py"],
-            check=True,
+        ingestion_result = subprocess.run(
+            [sys.executable, str(REPOSITORY_ROOT / "src" / "historical_ingestion.py")],
+            check=False,
             env=env,
+            cwd=REPOSITORY_ROOT,
+            capture_output=True,
+            text=True,
         )
 
+        if ingestion_result.returncode != 0:
+            if historical_file.exists():
+                st.warning(
+                    "Live AGMARKNET refresh is temporarily unavailable. "
+                    "Using the verified historical data stored with the project."
+                )
+            else:
+                st.error("Market data could not be downloaded and no stored data is available.")
+                st.stop()
+
         subprocess.run(
-            ["python", "src/run_pipeline.py"],
+            [sys.executable, str(REPOSITORY_ROOT / "src" / "run_pipeline.py")],
             check=True,
             env=env,
+            cwd=REPOSITORY_ROOT,
         )
 
     st.success(
