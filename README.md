@@ -4,6 +4,8 @@ A procurement-focused analytics platform that uses real agricultural market data
 
 Built with Python, Pandas, Scikit-learn, FastAPI, and Streamlit.
 
+**Live Dashboard:** [Open Commodity Procurement Intelligence](https://commodity-procurement-intelligence-9vzeafkqvaa37bvc2cgcnu.streamlit.app/)
+
 ## What Problem Does It Solve?
 
 Commodity buyers need more than historical prices.
