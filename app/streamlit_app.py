@@ -1,5 +1,7 @@
 import os
 import subprocess
+import threading
+import time
 
 import pandas as pd
 import altair as alt
@@ -11,6 +13,42 @@ st.set_page_config(
     page_icon="📊",
     layout="wide"
 )
+
+
+@st.cache_resource
+def start_fastapi_backend():
+    """Start the existing FastAPI service for single-service Streamlit deployment."""
+    try:
+        requests.get("http://127.0.0.1:8000/", timeout=1).raise_for_status()
+        return True
+    except requests.RequestException:
+        pass
+
+    import uvicorn
+    from api.main import app as fastapi_app
+
+    server = uvicorn.Server(
+        uvicorn.Config(
+            fastapi_app,
+            host="127.0.0.1",
+            port=8000,
+            log_level="warning",
+        )
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+
+    for _ in range(20):
+        try:
+            requests.get("http://127.0.0.1:8000/", timeout=1).raise_for_status()
+            return True
+        except requests.RequestException:
+            time.sleep(0.25)
+
+    raise RuntimeError("FastAPI backend did not start.")
+
+
+start_fastapi_backend()
 
 
 st.markdown("""
