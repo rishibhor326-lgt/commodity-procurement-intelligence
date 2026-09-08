@@ -4,6 +4,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from datetime import date
 
 import pandas as pd
 import altair as alt
@@ -169,16 +170,24 @@ if st.button("Generate Forecast"):
         env["PROCUREMENT_COMMODITY"] = selected_commodity
         env["PROCUREMENT_MARKET"] = selected_market
 
-        ingestion_result = subprocess.run(
-            [sys.executable, str(REPOSITORY_ROOT / "src" / "historical_ingestion.py")],
-            check=False,
-            env=env,
-            cwd=REPOSITORY_ROOT,
-            capture_output=True,
-            text=True,
+        refreshed_today = (
+            historical_file.exists()
+            and date.fromtimestamp(historical_file.stat().st_mtime) == date.today()
         )
 
-        if ingestion_result.returncode != 0:
+        if refreshed_today:
+            ingestion_result = None
+        else:
+            ingestion_result = subprocess.run(
+                [sys.executable, str(REPOSITORY_ROOT / "src" / "historical_ingestion.py")],
+                check=False,
+                env=env,
+                cwd=REPOSITORY_ROOT,
+                capture_output=True,
+                text=True,
+            )
+
+        if ingestion_result is not None and ingestion_result.returncode != 0:
             if historical_file.exists():
                 st.warning(
                     "Live AGMARKNET refresh is temporarily unavailable. "
@@ -226,13 +235,14 @@ try:
 
     st.caption(
         f"{summary_data['market']} — "
-        f"{summary_data['commodity']}"
+        f"{summary_data['commodity']} | "
+        f"Latest available market date: {summary_data['latest_date']}"
     )
 
     col1, col2, col3, col4 = st.columns(4)
 
     col1.metric(
-        "Current Modal Price (₹/Quintal)",
+        "Latest Available Price (₹/Quintal)",
         f"₹{summary_data['current_modal_price']:,.0f}"
     )
 
@@ -280,9 +290,14 @@ try:
 
     st.subheader("Actual + 7-Day Forecast")
 
-    actual_chart = recent_df[
-        ["arrival_date", "modal_price"]
-    ].copy()
+    chart_history = pd.read_csv(historical_file, parse_dates=["arrival_date"])
+    actual_chart = (
+        chart_history[chart_history["market"] == summary_data["market"]]
+        .sort_values("arrival_date")
+        .groupby("arrival_date", as_index=False)["modal_price"]
+        .mean()
+        .tail(30)
+    )
 
     actual_chart.columns = ["date", "Actual"]
 
@@ -330,7 +345,19 @@ try:
             ),
             color=alt.Color(
                 "Price Type:N",
-                title=None
+                title=None,
+                scale=alt.Scale(
+                    domain=["Actual", "Forecast"],
+                    range=["#2563EB", "#F97316"],
+                ),
+            ),
+            strokeDash=alt.StrokeDash(
+                "Price Type:N",
+                title=None,
+                scale=alt.Scale(
+                    domain=["Actual", "Forecast"],
+                    range=[[1, 0], [7, 5]],
+                ),
             ),
             tooltip=[
                 alt.Tooltip(
@@ -349,7 +376,10 @@ try:
                 ),
             ]
         )
-        .properties(height=420)
+        .properties(
+            height=440,
+            title="30 Most Recent Market Observations + 7-Day Forecast",
+        )
         .interactive()
     )
 
