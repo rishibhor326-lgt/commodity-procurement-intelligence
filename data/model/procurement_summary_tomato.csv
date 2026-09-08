@@ -1,0 +1,2 @@
+market,commodity,latest_date,current_modal_price,recent_7day_min,recent_7day_max,recent_7day_average,forecast_7day_average,expected_change_pct,procurement_signal,volatility_pct,anomaly_status,attention_score,attention_level
+APMC Akluj ,Tomato,2026-09-06,1000.0,800.0,1000.0,957.14,1000.0,0.0,WATCH,8.22,NORMAL,20,LOW

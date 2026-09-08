@@ -1,0 +1,2 @@
+market,commodity,latest_date,current_modal_price,recent_7day_min,recent_7day_max,recent_7day_average,forecast_7day_average,expected_change_pct,procurement_signal,volatility_pct,anomaly_status,attention_score,attention_level
+Nagpur APMC,Wheat,2026-07-28,2552.0,2458.0,3500.0,2804.4285714285716,2804.4285714285716,0.0,WATCH,5.0,NORMAL,20,LOW

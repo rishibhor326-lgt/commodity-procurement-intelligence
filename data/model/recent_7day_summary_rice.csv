@@ -1,0 +1,8 @@
+state,market,commodity,arrival_date,variety,arrivals_mt,min_price,max_price,modal_price
+Maharashtra,Alibagh APMC,Rice,2026-07-25,Other,1.0,4000.0,4500.0,4250.0
+Maharashtra,Alibagh APMC,Rice,2026-07-26,Other,1.0,4000.0,4500.0,4250.0
+Maharashtra,Alibagh APMC,Rice,2026-07-27,Other,1.0,4000.0,4500.0,4250.0
+Maharashtra,Alibagh APMC,Rice,2026-07-28,Other,1.0,4000.0,4500.0,4250.0
+Maharashtra,Alibagh APMC,Rice,2026-07-29,Other,1.0,4000.0,4500.0,4250.0
+Maharashtra,Alibagh APMC,Rice,2026-07-30,Other,1.0,4000.0,4500.0,4250.0
+Maharashtra,Alibagh APMC,Rice,2026-07-31,Other,1.0,4000.0,4500.0,4250.0

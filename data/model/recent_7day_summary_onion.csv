@@ -1,0 +1,8 @@
+state,market,commodity,arrival_date,variety,arrivals_mt,min_price,max_price,modal_price
+Maharashtra,Nagpur APMC,Onion,2026-07-30,Red,130.0,1700.0,2800.0,2525.0
+Maharashtra,Nagpur APMC,Onion,2026-07-30,White,80.0,3000.0,3500.0,3375.0
+Maharashtra,Nagpur APMC,Onion,2026-07-29,Red,110.0,1700.0,2800.0,2525.0
+Maharashtra,Nagpur APMC,Onion,2026-07-29,White,58.0,3000.0,3500.0,3375.0
+Maharashtra,Nagpur APMC,Onion,2026-07-28,Red,130.0,1700.0,2800.0,2525.0
+Maharashtra,Nagpur APMC,Onion,2026-07-28,White,80.0,3000.0,3500.0,3375.0
+Maharashtra,Nagpur APMC,Onion,2026-07-27,Red,110.0,1500.0,2500.0,2250.0

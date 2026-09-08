@@ -1,0 +1,8 @@
+state,market,commodity,arrival_date,variety,arrivals_mt,min_price,max_price,modal_price
+Maharashtra,APMC Akluj ,Tomato,2026-08-30,Local,2.7,500.0,1200.0,1000.0
+Maharashtra,APMC Akluj ,Tomato,2026-08-31,Local,5.5,500.0,1000.0,800.0
+Maharashtra,APMC Akluj ,Tomato,2026-09-02,Local,3.2,700.0,1500.0,1000.0
+Maharashtra,APMC Akluj ,Tomato,2026-09-03,Local,3.5,700.0,1000.0,900.0
+Maharashtra,APMC Akluj ,Tomato,2026-09-04,Local,3.8,700.0,1300.0,1000.0
+Maharashtra,APMC Akluj ,Tomato,2026-09-05,Local,3.6,800.0,1300.0,1000.0
+Maharashtra,APMC Akluj ,Tomato,2026-09-06,Local,3.5,700.0,1500.0,1000.0

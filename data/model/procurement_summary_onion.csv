@@ -1,0 +1,2 @@
+market,commodity,latest_date,current_modal_price,recent_7day_min,recent_7day_max,recent_7day_average,forecast_7day_average,expected_change_pct,procurement_signal,volatility_pct,anomaly_status,attention_score,attention_level
+Nagpur APMC,Onion,2026-07-27,2250.0,1500.0,3500.0,2850.0,2850.0,0.0,WATCH,5.0,NORMAL,20,LOW

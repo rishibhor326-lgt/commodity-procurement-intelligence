@@ -1,0 +1,8 @@
+state,market,commodity,arrival_date,variety,arrivals_mt,min_price,max_price,modal_price
+Maharashtra,Nagpur APMC,Wheat,2026-07-31,Other,60.0,2520.0,2584.0,2568.0
+Maharashtra,Nagpur APMC,Wheat,2026-07-31,Sharbati,62.4,3200.0,3500.0,3425.0
+Maharashtra,Nagpur APMC,Wheat,2026-07-29,Other,29.2,2585.0,2680.0,2656.0
+Maharashtra,Nagpur APMC,Wheat,2026-07-29,Other,20.0,2524.0,2584.0,2569.0
+Maharashtra,Nagpur APMC,Wheat,2026-07-29,Sharbati,80.0,3000.0,3300.0,3225.0
+Maharashtra,Nagpur APMC,Wheat,2026-07-28,Other,30.0,2585.0,2654.0,2636.0
+Maharashtra,Nagpur APMC,Wheat,2026-07-28,Other,23.5,2458.0,2584.0,2552.0
