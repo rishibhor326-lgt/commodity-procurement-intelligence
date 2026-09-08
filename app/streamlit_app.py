@@ -1,12 +1,18 @@
 import os
 import subprocess
+import sys
 import threading
 import time
+from pathlib import Path
 
 import pandas as pd
 import altair as alt
 import requests
 import streamlit as st
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 st.set_page_config(
     page_title="Commodity Procurement Intelligence",
