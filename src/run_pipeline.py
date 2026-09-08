@@ -1,4 +1,5 @@
 import subprocess
+import sys
 
 steps = [
     "src/historical_cleaning.py",
@@ -20,6 +21,6 @@ steps = [
 
 for step in steps:
     print(f"\n=== RUNNING {step} ===")
-    subprocess.run(["python", step], check=True)
+    subprocess.run([sys.executable, step], check=True)
 
 print("\n=== FULL PIPELINE COMPLETE ===")
