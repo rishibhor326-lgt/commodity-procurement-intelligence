@@ -140,6 +140,14 @@ def main():
             fresh_rows.extend(rows)
             print(f"{year}-{month:02d}: {len(rows)} rows")
 
+    # Do not report a successful refresh unless the API returned new observations.
+    if not fresh_rows:
+        raise RuntimeError(
+            "AGMARKNET returned zero usable rows for all requested months. "
+            "The existing latest-data file was not overwritten. Check API availability "
+            "and the monthly response format."
+        )
+
     fresh = pd.DataFrame(fresh_rows)
     df = pd.concat([archive, fresh], ignore_index=True)
 
