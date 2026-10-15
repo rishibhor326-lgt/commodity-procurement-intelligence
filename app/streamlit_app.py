@@ -1,476 +1,154 @@
-import os
-import subprocess
-import sys
-import threading
-import time
 from pathlib import Path
-from datetime import date
+from datetime import timedelta
 
-import pandas as pd
 import altair as alt
-import requests
+import numpy as np
+import pandas as pd
 import streamlit as st
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-if str(REPOSITORY_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPOSITORY_ROOT))
+ROOT = Path(__file__).resolve().parents[1]
+DATA_DIR = ROOT / "data" / "historical"
+COMMODITIES = ["Onion", "Tomato", "Potato", "Rice", "Wheat"]
+REQUIRED = {"market", "arrival_date", "modal_price", "min_price", "max_price", "arrivals_mt"}
 
-st.set_page_config(
-    page_title="Commodity Procurement Intelligence",
-    page_icon="📊",
-    layout="wide"
-)
-
-
-@st.cache_resource
-def start_fastapi_backend():
-    """Start the existing FastAPI service for single-service Streamlit deployment."""
-    try:
-        requests.get("http://127.0.0.1:8000/", timeout=1).raise_for_status()
-        return True
-    except requests.RequestException:
-        pass
-
-    import uvicorn
-    from api.main import app as fastapi_app
-
-    server = uvicorn.Server(
-        uvicorn.Config(
-            fastapi_app,
-            host="127.0.0.1",
-            port=8000,
-            log_level="warning",
-        )
-    )
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-
-    for _ in range(20):
-        try:
-            requests.get("http://127.0.0.1:8000/", timeout=1).raise_for_status()
-            return True
-        except requests.RequestException:
-            time.sleep(0.25)
-
-    raise RuntimeError("FastAPI backend did not start.")
-
-
-start_fastapi_backend()
-
+st.set_page_config(page_title="Commodity Procurement Intelligence", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
-.block-container {
-    padding-top: 2rem;
-    padding-bottom: 2rem;
-}
-
-h1 {
-    font-size: 2.4rem !important;
-    font-weight: 700 !important;
-}
-
-[data-testid="stMetric"] {
-    background: #1e222a;
-    border: 1px solid #343a46;
-    padding: 18px;
-    border-radius: 14px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.20);
-}
-
-[data-testid="stMetricLabel"] {
-    font-weight: 600;
-    color: #b7bdc8 !important;
-}
-
-[data-testid="stMetricValue"] {
-    color: #ffffff !important;
-}
-
-div[data-testid="stButton"] > button {
-    width: 100%;
-    border-radius: 10px;
-    font-weight: 600;
-}
-
-div[data-testid="stSelectbox"] {
-    margin-bottom: 8px;
-}
+.block-container {padding-top: 1.8rem; padding-bottom: 2rem; max-width: 1400px;}
+[data-testid="stMetric"] {background: #1e222a; border: 1px solid #343a46; padding: 16px; border-radius: 12px;}
 </style>
 """, unsafe_allow_html=True)
 
+@st.cache_data
+def load_history(commodity):
+    candidates = [
+        DATA_DIR / f"maharashtra_{commodity.lower()}_latest.csv",
+        DATA_DIR / f"maharashtra_{commodity.lower()}_2026_02_to_07.csv",
+    ]
+    frames = []
+    for path in candidates:
+        if path.exists():
+            try:
+                frame = pd.read_csv(path)
+                if REQUIRED.issubset(frame.columns) and not frame.empty:
+                    frames.append(frame)
+            except (OSError, pd.errors.ParserError, UnicodeDecodeError):
+                continue
+    if not frames:
+        return pd.DataFrame()
+    df = pd.concat(frames, ignore_index=True)
+    df["arrival_date"] = pd.to_datetime(df["arrival_date"], errors="coerce")
+    for col in ["modal_price", "min_price", "max_price", "arrivals_mt"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df["market"] = df["market"].astype(str).str.strip()
+    df = df.dropna(subset=["arrival_date", "market", "modal_price"])
+    df = df[(df["modal_price"] > 0) & (df["market"] != "")]
+    # If both archive and latest file exist, retain one record per market/date/commodity/variety.
+    keys = [col for col in ["market", "arrival_date", "commodity", "variety"] if col in df.columns]
+    if keys:
+        df = df.drop_duplicates(subset=keys, keep="last")
+    return df.sort_values("arrival_date").reset_index(drop=True)
+
 st.title("Commodity Procurement Intelligence")
-st.caption(
-    "Procurement-focused commodity price monitoring, "
-    "forecasting and decision intelligence."
-)
+st.caption("Explore historical mandi prices, market activity, volatility and a transparent 7-day baseline estimate.")
+st.info("Data note: the dashboard uses historical CSVs committed with this project. Live AGMARKNET refresh is not guaranteed. The 7-day estimate is a simple baseline, not a trained machine-learning forecast.")
 
-COMMODITIES = ["Onion", "Tomato", "Potato", "Rice", "Wheat"]
-
-selected_commodity = st.selectbox(
-    "Select Commodity",
-    COMMODITIES,
-)
-
-historical_file = (
-    REPOSITORY_ROOT / "data" / "historical"
-    / f"maharashtra_{selected_commodity.lower()}_latest.csv"
-)
-archive_file = (
-    REPOSITORY_ROOT / "data" / "historical"
-    / f"maharashtra_{selected_commodity.lower()}_2026_02_to_07.csv"
-)
-
-# Prefer the current combined file. If it is absent or unusable, use the committed archive.
-historical_df = pd.DataFrame()
-data_source = None
-for candidate in (historical_file, archive_file):
-    if candidate.exists():
-        try:
-            candidate_df = pd.read_csv(candidate)
-            required = {"market", "arrival_date", "modal_price", "arrivals_mt"}
-            if required.issubset(candidate_df.columns) and not candidate_df.empty:
-                historical_df = candidate_df
-                data_source = candidate
-                break
-        except (OSError, pd.errors.ParserError, UnicodeDecodeError):
-            continue
-
-if historical_df.empty:
-    with st.spinner(f"Fetching latest {selected_commodity} market data..."):
-        env = {str(key): str(value) for key, value in os.environ.items() if value is not None}
-        env["PROCUREMENT_COMMODITY"] = selected_commodity
-        ingestion_result = subprocess.run(
-            [sys.executable, str(REPOSITORY_ROOT / "src" / "historical_ingestion.py")],
-            check=False,
-            env=env,
-            cwd=str(REPOSITORY_ROOT),
-            capture_output=True,
-            text=True,
-        )
-    if historical_file.exists():
-        candidate_df = pd.read_csv(historical_file)
-        if not candidate_df.empty:
-            historical_df, data_source = candidate_df, historical_file
-
-if historical_df.empty:
-    st.error("No usable historical data is available for this commodity.")
+commodity = st.selectbox("Select commodity", COMMODITIES, index=1)
+data = load_history(commodity)
+if data.empty:
+    st.error(f"No valid historical records found for {commodity}. Check the CSV in data/historical.")
     st.stop()
 
-if data_source == archive_file:
-    st.info("Using the committed historical archive; live refresh may be unavailable.")
-
-
-
-market_counts = historical_df.groupby("market").size()
-
-# Prefer markets with sufficient history, but fall back to any available market.
-# An empty options list makes Streamlit return None, which breaks the pipeline.
-MARKETS = sorted(market_counts[market_counts >= 100].index.tolist())
-if not MARKETS:
-    MARKETS = sorted(market_counts.index.dropna().astype(str).tolist())
-
-if not MARKETS:
-    st.error(
-        f"No market records were found in {historical_file.name}. "
-        "Please check the historical data file or refresh the deployment."
-    )
+markets = sorted(data["market"].dropna().unique().tolist())
+preferred = "Pune(Pimpri) APMC"
+default_index = markets.index(preferred) if preferred in markets else 0
+market = st.selectbox("Select market", markets, index=default_index)
+market_df = data[data["market"] == market].copy().sort_values("arrival_date")
+market_df = market_df.drop_duplicates(subset=["arrival_date"], keep="last").reset_index(drop=True)
+if market_df.empty:
+    st.warning("There are no valid records for this market.")
     st.stop()
 
-default_market_index = (
-    MARKETS.index("Pune(Pimpri) APMC")
-    if "Pune(Pimpri) APMC" in MARKETS
-    else 0
+latest = market_df.iloc[-1]
+prices = market_df["modal_price"].dropna()
+last7 = market_df.tail(7)
+last14 = market_df.tail(14)
+current_price = float(latest["modal_price"])
+baseline = float(last7["modal_price"].mean())
+change_pct = ((baseline - current_price) / current_price * 100) if current_price else 0.0
+volatility_pct = (float(last14["modal_price"].std(ddof=0)) / float(last14["modal_price"].mean()) * 100) if len(last14) > 1 and last14["modal_price"].mean() else 0.0
+rolling_mean = float(last14["modal_price"].mean()) if not last14.empty else current_price
+anomaly = "Review price" if rolling_mean and abs(current_price - rolling_mean) > 2 * max(float(last14["modal_price"].std(ddof=0) or 0), 1) else "Within recent range"
+signal = "BUY SOON" if change_pct >= 5 else ("WAIT" if change_pct <= -5 else "WATCH")
+attention = "High" if abs(change_pct) >= 10 or volatility_pct >= 20 else ("Medium" if abs(change_pct) >= 5 or volatility_pct >= 10 else "Low")
+attention_score = min(100, round(abs(change_pct) * 3 + volatility_pct * 1.5))
+
+st.caption(f"{market} · Latest available record: {latest['arrival_date'].strftime('%d %b %Y')} · {len(market_df):,} valid observations")
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Latest modal price", f"₹{current_price:,.0f}/quintal")
+m2.metric("7-day baseline avg.", f"₹{baseline:,.0f}/quintal", f"{change_pct:+.2f}% vs latest")
+m3.metric("Procurement watch", signal)
+m4.metric("Attention level", attention)
+st.caption(f"Approximate latest price: ₹{current_price / 100:,.2f} per kg. Signals are rule-based indicators, not purchasing advice.")
+
+st.divider()
+left, right = st.columns([1.7, 1])
+with left:
+    st.subheader("Historical prices and 7-day baseline")
+    history_chart = market_df.tail(45)[["arrival_date", "modal_price"]].rename(columns={"arrival_date": "Date", "modal_price": "Price"})
+    history_chart["Series"] = "Historical modal price"
+    future_dates = pd.date_range(latest["arrival_date"] + timedelta(days=1), periods=7, freq="D")
+    future_chart = pd.DataFrame({"Date": future_dates, "Price": [baseline] * 7, "Series": ["7-day baseline"] * 7})
+    chart_data = pd.concat([history_chart, future_chart], ignore_index=True)
+    chart = alt.Chart(chart_data).mark_line(point=True, strokeWidth=2.5).encode(
+        x=alt.X("Date:T", title="Date"),
+        y=alt.Y("Price:Q", title="Modal price (₹/quintal)", scale=alt.Scale(zero=False)),
+        color=alt.Color("Series:N", title="Series"),
+        strokeDash=alt.StrokeDash("Series:N", title="Series"),
+        tooltip=[alt.Tooltip("Date:T", format="%d %b %Y"), alt.Tooltip("Series:N"), alt.Tooltip("Price:Q", format=",.0f")]
+    ).properties(height=360).interactive()
+    st.altair_chart(chart, use_container_width=True)
+with right:
+    st.subheader("Market intelligence")
+    st.metric("Price volatility (14 records)", f"{volatility_pct:.1f}%")
+    st.metric("Price movement vs baseline", f"{change_pct:+.2f}%")
+    st.metric("Attention score", f"{attention_score}/100")
+    st.write("**Anomaly screen:**", anomaly)
+    st.write("**Rule-based signal:**", signal)
+    st.caption("Volatility is the standard deviation divided by mean over the most recent 14 observations. The anomaly screen compares the latest price with the recent mean and standard deviation.")
+
+st.divider()
+st.subheader("Recent market observations")
+recent = market_df.tail(14).sort_values("arrival_date", ascending=False).copy()
+display_cols = [c for c in ["arrival_date", "min_price", "max_price", "modal_price", "arrivals_mt", "variety"] if c in recent.columns]
+recent = recent[display_cols].rename(columns={
+    "arrival_date": "Date", "min_price": "Min price (₹/quintal)",
+    "max_price": "Max price (₹/quintal)", "modal_price": "Modal price (₹/quintal)",
+    "arrivals_mt": "Arrivals (MT)", "variety": "Variety"
+})
+recent["Date"] = pd.to_datetime(recent["Date"]).dt.strftime("%d %b %Y")
+st.dataframe(recent, use_container_width=True, hide_index=True)
+
+st.divider()
+st.subheader("Compare markets")
+comparison = data.groupby("market", as_index=False).agg(
+    latest_date=("arrival_date", "max"),
+    latest_modal_price=("modal_price", "last"),
+    avg_arrivals_mt=("arrivals_mt", "mean"),
+    observations=("modal_price", "count"),
 )
+comparison = comparison.sort_values("latest_date", ascending=False).head(15)
+comparison["latest_modal_price"] = comparison["latest_modal_price"].round(2)
+comparison["avg_arrivals_mt"] = comparison["avg_arrivals_mt"].round(2)
+comparison = comparison.rename(columns={
+    "market": "Market", "latest_date": "Latest record",
+    "latest_modal_price": "Latest modal price (₹/quintal)",
+    "avg_arrivals_mt": "Average arrivals (MT)", "observations": "Records"
+})
+comparison["Latest record"] = pd.to_datetime(comparison["Latest record"]).dt.strftime("%d %b %Y")
+st.dataframe(comparison, use_container_width=True, hide_index=True)
 
-selected_market = st.selectbox(
-    "Select Market",
-    MARKETS,
-    index=default_market_index,
-)
-
-# A complete model pipeline requires enough valid observations.
-# Don't retrain on every cold start; show a clear diagnostic if cached outputs are absent.
-MODEL_OUTPUTS = [
-    REPOSITORY_ROOT / "data" / "model" / "procurement_summary.csv",
-    REPOSITORY_ROOT / "data" / "model" / "forecast_7day.csv",
-    REPOSITORY_ROOT / "data" / "model" / "recent_7day_summary.csv",
-]
-if not all(path.exists() for path in MODEL_OUTPUTS):
-    st.warning(
-        "Forecast outputs are not available in this deployment yet. "
-        "Historical data loaded successfully, but the forecasting pipeline "
-        "must be run with sufficient market history before forecasts can be displayed."
-    )
-    st.stop()
-
-if st.button("Generate Forecast"):
-
-    with st.spinner(
-        f"Generating {selected_commodity} forecast..."
-    ):
-        env = os.environ.copy()
-
-        env["PROCUREMENT_COMMODITY"] = selected_commodity
-        env["PROCUREMENT_MARKET"] = selected_market
-
-        refreshed_today = (
-            historical_file.exists()
-            and date.fromtimestamp(historical_file.stat().st_mtime) == date.today()
-        )
-
-        if refreshed_today:
-            ingestion_result = None
-        else:
-            ingestion_result = subprocess.run(
-                [sys.executable, str(REPOSITORY_ROOT / "src" / "historical_ingestion.py")],
-                check=False,
-                env=env,
-                cwd=REPOSITORY_ROOT,
-                capture_output=True,
-                text=True,
-            )
-
-        if ingestion_result is not None and ingestion_result.returncode != 0:
-            if historical_file.exists():
-                st.warning(
-                    "Live AGMARKNET refresh is temporarily unavailable. "
-                    "Using the verified historical data stored with the project."
-                )
-            else:
-                st.error("Market data could not be downloaded and no stored data is available.")
-                st.stop()
-
-        subprocess.run(
-            [sys.executable, str(REPOSITORY_ROOT / "src" / "run_pipeline.py")],
-            check=True,
-            env=env,
-            cwd=REPOSITORY_ROOT,
-        )
-
-    st.success(
-        f"Forecast generated for "
-        f"{selected_commodity} at {selected_market}"
-    )
-
-SUMMARY_URL = "http://127.0.0.1:8000/summary"
-FORECAST_URL = "http://127.0.0.1:8000/forecast"
-RECENT_URL = "http://127.0.0.1:8000/recent"
-
-def get_api_json(url):
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()
-    try:
-        return response.json()
-    except ValueError as error:
-        raise RuntimeError(
-            f"API endpoint {url.rsplit('/', 1)[-1]} returned an invalid or empty response "
-            f"(HTTP {response.status_code})."
-        ) from error
-
-
-try:
-    summary_data = get_api_json(SUMMARY_URL)
-
-    forecast_df = pd.DataFrame(get_api_json(FORECAST_URL))
-
-    recent_df = pd.DataFrame(get_api_json(RECENT_URL))
-
-    st.caption(
-        f"{summary_data['market']} — "
-        f"{summary_data['commodity']} | "
-        f"Latest available market date: {summary_data['latest_date']}"
-    )
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    col1.metric(
-        "Latest Available Price (₹/Quintal)",
-        f"₹{summary_data['current_modal_price']:,.0f}"
-    )
-
-    col2.metric(
-        "7-Day Forecast Avg (₹/Quintal)",
-        f"₹{summary_data['forecast_7day_average']:,.0f}",
-        f"{summary_data['expected_change_pct']:.2f}%"
-    )
-
-    st.caption(f"Approx. current price: ₹{summary_data['current_modal_price'] / 100:.2f} per kg")
-
-    col3.metric(
-        "Procurement Signal",
-        summary_data["procurement_signal"]
-    )
-
-    col4.metric(
-        "Attention Level",
-        summary_data["attention_level"]
-    )
-
-    expected_change = summary_data["expected_change_pct"]
-    signal = summary_data["procurement_signal"]
-
-    if expected_change > 5:
-        insight = (
-            f"Prices are expected to rise by {expected_change:.2f}% over the next 7 days. "
-            f"Procurement signal: {signal}."
-        )
-    elif expected_change < -5:
-        insight = (
-            f"Prices are expected to fall by {abs(expected_change):.2f}% over the next 7 days. "
-            f"Procurement signal: {signal}."
-        )
-    else:
-        insight = (
-            f"Prices are expected to remain relatively stable, with a "
-            f"{expected_change:.2f}% change over the next 7 days. "
-            f"Procurement signal: {signal}."
-        )
-
-    st.info(insight)
-
-    st.divider()
-
-    st.subheader("Actual + 7-Day Forecast")
-
-    chart_history = pd.read_csv(historical_file, parse_dates=["arrival_date"])
-    actual_chart = (
-        chart_history[chart_history["market"] == summary_data["market"]]
-        .sort_values("arrival_date")
-        .groupby("arrival_date", as_index=False)["modal_price"]
-        .mean()
-        .tail(30)
-    )
-
-    actual_chart.columns = ["date", "Actual"]
-
-    forecast_chart = forecast_df[
-        ["forecast_date", "predicted_modal_price"]
-    ].copy()
-
-    forecast_chart.columns = ["date", "Forecast"]
-
-    actual_chart["date"] = pd.to_datetime(
-        actual_chart["date"]
-    )
-
-    forecast_chart["date"] = pd.to_datetime(
-        forecast_chart["date"]
-    )
-
-    chart_df = pd.merge(
-        actual_chart,
-        forecast_chart,
-        on="date",
-        how="outer"
-    ).sort_values("date")
-
-    chart_long = chart_df.melt(
-        id_vars=["date"],
-        value_vars=["Actual", "Forecast"],
-        var_name="Price Type",
-        value_name="Price"
-    ).dropna()
-
-    price_chart = (
-        alt.Chart(chart_long)
-        .mark_line(point=True, strokeWidth=3)
-        .encode(
-            x=alt.X(
-                "date:T",
-                title="Date",
-                axis=alt.Axis(format="%d %b", labelAngle=0)
-            ),
-            y=alt.Y(
-                "Price:Q",
-                title="Price (₹/Quintal)",
-                scale=alt.Scale(zero=False)
-            ),
-            color=alt.Color(
-                "Price Type:N",
-                title=None,
-                scale=alt.Scale(
-                    domain=["Actual", "Forecast"],
-                    range=["#2563EB", "#F97316"],
-                ),
-            ),
-            strokeDash=alt.StrokeDash(
-                "Price Type:N",
-                title=None,
-                scale=alt.Scale(
-                    domain=["Actual", "Forecast"],
-                    range=[[1, 0], [7, 5]],
-                ),
-            ),
-            tooltip=[
-                alt.Tooltip(
-                    "date:T",
-                    title="Date",
-                    format="%d %b %Y"
-                ),
-                alt.Tooltip(
-                    "Price Type:N",
-                    title="Type"
-                ),
-                alt.Tooltip(
-                    "Price:Q",
-                    title="Price",
-                    format=",.0f"
-                ),
-            ]
-        )
-        .properties(
-            height=440,
-            title="30 Most Recent Market Observations + 7-Day Forecast",
-        )
-        .interactive()
-    )
-
-    st.altair_chart(
-        price_chart,
-        use_container_width=True
-    )
-
-    st.divider()
-
-    st.subheader("Recent Market Prices")
-
-    recent_display = recent_df.rename(columns={
-        "arrival_date": "Date",
-        "min_price": "Min Price",
-        "max_price": "Max Price",
-        "modal_price": "Modal Price",
-        "arrivals_mt": "Arrivals (MT)"
-    })
-
-    st.dataframe(
-        recent_display,
-        width="stretch",
-        hide_index=True
-    )
-
-    st.divider()
-
-    st.subheader("Market Intelligence")
-
-    c1, c2, c3 = st.columns(3)
-
-    c1.metric(
-        "Volatility",
-        f"{summary_data['volatility_pct']:.2f}%"
-    )
-
-    c2.metric(
-        "Anomaly Status",
-        summary_data["anomaly_status"]
-    )
-
-    c3.metric(
-        "Attention Score",
-        summary_data["attention_score"]
-    )
-
-except Exception as e:
-    st.error(
-        f"Could not load dashboard data: {e}"
-    )
+csv = market_df.to_csv(index=False).encode("utf-8")
+st.download_button("Download selected market history (CSV)", data=csv, file_name=f"{commodity.lower()}_{market.lower().replace(' ', '_')}_history.csv", mime="text/csv")
+st.caption("Built with Python, Pandas, Streamlit and Altair · Historical dataset bundled in the GitHub repository.")
