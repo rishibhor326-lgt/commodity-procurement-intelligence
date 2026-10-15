@@ -113,39 +113,54 @@ selected_commodity = st.selectbox(
 )
 
 historical_file = (
-    REPOSITORY_ROOT
-    / "data"
-    / "historical"
+    REPOSITORY_ROOT / "data" / "historical"
     / f"maharashtra_{selected_commodity.lower()}_latest.csv"
 )
+archive_file = (
+    REPOSITORY_ROOT / "data" / "historical"
+    / f"maharashtra_{selected_commodity.lower()}_2026_02_to_07.csv"
+)
 
-if not os.path.exists(historical_file):
-    env = os.environ.copy()
-    env["PROCUREMENT_COMMODITY"] = selected_commodity
+# Prefer the current combined file. If it is absent or unusable, use the committed archive.
+historical_df = pd.DataFrame()
+data_source = None
+for candidate in (historical_file, archive_file):
+    if candidate.exists():
+        try:
+            candidate_df = pd.read_csv(candidate)
+            required = {"market", "arrival_date", "modal_price", "arrivals_mt"}
+            if required.issubset(candidate_df.columns) and not candidate_df.empty:
+                historical_df = candidate_df
+                data_source = candidate
+                break
+        except (OSError, pd.errors.ParserError, UnicodeDecodeError):
+            continue
 
-    with st.spinner(
-        f"Fetching latest {selected_commodity} market data..."
-    ):
+if historical_df.empty:
+    with st.spinner(f"Fetching latest {selected_commodity} market data..."):
+        env = {str(key): str(value) for key, value in os.environ.items() if value is not None}
+        env["PROCUREMENT_COMMODITY"] = selected_commodity
         ingestion_result = subprocess.run(
             [sys.executable, str(REPOSITORY_ROOT / "src" / "historical_ingestion.py")],
             check=False,
             env=env,
-            cwd=REPOSITORY_ROOT,
+            cwd=str(REPOSITORY_ROOT),
             capture_output=True,
             text=True,
         )
+    if historical_file.exists():
+        candidate_df = pd.read_csv(historical_file)
+        if not candidate_df.empty:
+            historical_df, data_source = candidate_df, historical_file
 
-        if ingestion_result.returncode != 0:
-            if historical_file.exists():
-                st.warning(
-                    "Live AGMARKNET refresh is temporarily unavailable. "
-                    "Using the verified historical data stored with the project."
-                )
-            else:
-                st.error("Market data could not be downloaded and no stored data is available.")
-                st.stop()
+if historical_df.empty:
+    st.error("No usable historical data is available for this commodity.")
+    st.stop()
 
-historical_df = pd.read_csv(historical_file)
+if data_source == archive_file:
+    st.info("Using the committed historical archive; live refresh may be unavailable.")
+
+
 
 market_counts = historical_df.groupby("market").size()
 
@@ -174,40 +189,20 @@ selected_market = st.selectbox(
     index=default_market_index,
 )
 
-# Generate dashboard outputs on first deployment/startup when they are absent.
-# Streamlit Cloud starts with a fresh filesystem, so generated model CSVs may not exist.
+# A complete model pipeline requires enough valid observations.
+# Don't retrain on every cold start; show a clear diagnostic if cached outputs are absent.
 MODEL_OUTPUTS = [
     REPOSITORY_ROOT / "data" / "model" / "procurement_summary.csv",
     REPOSITORY_ROOT / "data" / "model" / "forecast_7day.csv",
     REPOSITORY_ROOT / "data" / "model" / "recent_7day_summary.csv",
 ]
-
 if not all(path.exists() for path in MODEL_OUTPUTS):
-    with st.spinner("Preparing the initial dashboard data. This may take a few minutes..."):
-        # Pass only valid string environment values to subprocess (Python 3.14 is strict).
-        env = {
-            str(key): str(value)
-            for key, value in os.environ.items()
-            if value is not None
-        }
-        env["PROCUREMENT_COMMODITY"] = str(selected_commodity)
-        env["PROCUREMENT_MARKET"] = str(selected_market)
-        try:
-            subprocess.run(
-                [sys.executable, str(REPOSITORY_ROOT / "src" / "run_pipeline.py")],
-                check=True,
-                env=env,
-                cwd=str(REPOSITORY_ROOT),
-                capture_output=True,
-                text=True,
-            )
-        except subprocess.CalledProcessError as error:
-            st.error("The dashboard could not prepare its initial data.")
-            if error.stderr:
-                st.code(error.stderr[-4000:])
-            elif error.stdout:
-                st.code(error.stdout[-4000:])
-            st.stop()
+    st.warning(
+        "Forecast outputs are not available in this deployment yet. "
+        "Historical data loaded successfully, but the forecasting pipeline "
+        "must be run with sufficient market history before forecasts can be displayed."
+    )
+    st.stop()
 
 if st.button("Generate Forecast"):
 
