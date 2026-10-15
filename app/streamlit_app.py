@@ -149,15 +149,29 @@ historical_df = pd.read_csv(historical_file)
 
 market_counts = historical_df.groupby("market").size()
 
-MARKETS = sorted(
-    market_counts[
-        market_counts >= 100
-    ].index.tolist()
+# Prefer markets with sufficient history, but fall back to any available market.
+# An empty options list makes Streamlit return None, which breaks the pipeline.
+MARKETS = sorted(market_counts[market_counts >= 100].index.tolist())
+if not MARKETS:
+    MARKETS = sorted(market_counts.index.dropna().astype(str).tolist())
+
+if not MARKETS:
+    st.error(
+        f"No market records were found in {historical_file.name}. "
+        "Please check the historical data file or refresh the deployment."
+    )
+    st.stop()
+
+default_market_index = (
+    MARKETS.index("Pune(Pimpri) APMC")
+    if "Pune(Pimpri) APMC" in MARKETS
+    else 0
 )
 
 selected_market = st.selectbox(
     "Select Market",
     MARKETS,
+    index=default_market_index,
 )
 
 # Generate dashboard outputs on first deployment/startup when they are absent.
