@@ -20,7 +20,7 @@ def main():
     )
 
     df = (
-        df[df["market"] == MARKET]
+        df[df["market"].astype(str).str.strip() == str(MARKET).strip()]
         .sort_values("arrival_date")
         .reset_index(drop=True)
         .copy()
@@ -30,6 +30,10 @@ def main():
         raise ValueError(
             f"No historical data found for market: {MARKET}"
         )
+
+    # Ensure API/CSV values are numeric before computing rolling features.
+    for column in ["modal_price", "arrivals_mt"]:
+        df[column] = pd.to_numeric(df[column], errors="coerce")
 
     df["modal_lag_1"] = df["modal_price"].shift(1)
     df["modal_lag_7"] = df["modal_price"].shift(7)
@@ -56,7 +60,27 @@ def main():
         .shift(1)
     )
 
-    model_df = df.dropna().reset_index(drop=True)
+    required_features = [
+        "arrival_date",
+        "modal_price",
+        "modal_lag_1",
+        "modal_lag_7",
+        "modal_lag_14",
+        "arrivals_lag_1",
+        "arrivals_lag_7",
+        "modal_roll_mean_7",
+        "modal_roll_std_7",
+        "modal_roll_mean_14",
+        "modal_roll_std_14",
+        "day_of_week",
+        "day_of_month",
+        "month",
+        "modal_return_1d",
+    ]
+    model_df = (
+        df.dropna(subset=required_features)
+        .reset_index(drop=True)
+    )
 
     OUTPUT_FILE.parent.mkdir(
         parents=True,
@@ -73,6 +97,13 @@ def main():
     print("Original observations:", len(df))
     print("Model-ready observations:", len(model_df))
     print("Features:", len(model_df.columns))
+
+    if model_df.empty:
+        raise ValueError(
+            f"Feature engineering produced 0 usable rows for market {MARKET}. "
+            f"Input rows: {len(df)}. Check missing modal_price/arrivals_mt values "
+            "and the historical CSV date range."
+        )
 
     print(
         "Date range:",
