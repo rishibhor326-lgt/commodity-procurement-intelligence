@@ -58,6 +58,22 @@ def fetch_historical_data(year, month, state_id, commodity_id, max_retries=3):
             return payload
 
         except (requests.RequestException, ValueError, RuntimeError) as error:
+            error_text = str(error)
+            # AGMARKNET now explicitly requires a CAPTCHA token for this endpoint.
+            # Retrying the same anonymous request cannot resolve that server-side requirement.
+            if "TOKEN_OR_CAPTCHA_REQUIRED" in error_text or (
+                isinstance(error, requests.HTTPError)
+                and getattr(error.response, "status_code", None) == 400
+                and "captcha" in error_text.lower()
+            ):
+                raise RuntimeError(
+                    "AGMARKNET's monthly endpoint requires a CAPTCHA token "
+                    "(TOKEN_OR_CAPTCHA_REQUIRED). Automated refresh is blocked for "
+                    "this endpoint; no retries were attempted. Existing saved data "
+                    "has been preserved. Switch to a supported data source or an "
+                    "official API that permits authenticated programmatic access."
+                ) from error
+
             if attempt == max_retries:
                 raise RuntimeError(
                     f"Failed to fetch {year}-{month:02d}: {type(error).__name__}: {error}"
