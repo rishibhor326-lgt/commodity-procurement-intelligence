@@ -99,7 +99,14 @@ def main():
     archive = pd.read_csv(archive_file) if archive_file.exists() else pd.DataFrame()
     # Archive CSVs use ISO dates (YYYY-MM-DD); API responses may use DD/MM/YYYY.
     # Parse flexibly so the archive's real latest date is detected correctly.
-    archive_dates = pd.to_datetime(archive["arrival_date"], errors="coerce", dayfirst=True) if not archive.empty else pd.Series(dtype="datetime64[ns]")
+    if not archive.empty:
+        archive_raw_dates = archive["arrival_date"].astype(str).str.strip()
+        archive_iso_mask = archive_raw_dates.str.match(r"^\d{4}-\d{2}-\d{2}")
+        archive_dates = pd.Series(pd.NaT, index=archive.index, dtype="datetime64[ns]")
+        archive_dates.loc[archive_iso_mask] = pd.to_datetime(archive_raw_dates.loc[archive_iso_mask], format="%Y-%m-%d", errors="coerce")
+        archive_dates.loc[~archive_iso_mask] = pd.to_datetime(archive_raw_dates.loc[~archive_iso_mask], dayfirst=True, errors="coerce")
+    else:
+        archive_dates = pd.Series(dtype="datetime64[ns]")
     last_archive_date = archive_dates.max() if not archive.empty else pd.Timestamp(2026, 1, 31)
 
     first_month = (last_archive_date + pd.offsets.MonthBegin(1)).normalize()
@@ -136,12 +143,20 @@ def main():
     fresh = pd.DataFrame(fresh_rows)
     df = pd.concat([archive, fresh], ignore_index=True)
 
-    # Accept both archive ISO dates and API date strings without discarding ISO rows.
-    df["arrival_date"] = pd.to_datetime(
-        df["arrival_date"],
-        errors="coerce",
-        dayfirst=True,
-    )
+    # Parse ISO dates strictly; parse slash-formatted API dates as day-first.
+    raw_dates = df["arrival_date"].astype(str).str.strip()
+    iso_mask = raw_dates.str.match(r"^\d{4}-\d{2}-\d{2}")
+    parsed_dates = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
+    parsed_dates.loc[iso_mask] = pd.to_datetime(raw_dates.loc[iso_mask], format="%Y-%m-%d", errors="coerce")
+    parsed_dates.loc[~iso_mask] = pd.to_datetime(raw_dates.loc[~iso_mask], dayfirst=True, errors="coerce")
+    df["arrival_date"] = parsed_dates.dt.normalize()
+
+    # Never persist future-dated rows as actual market observations.
+    today_date = pd.Timestamp(datetime.now().date())
+    future_count = int((df["arrival_date"] > today_date).sum())
+    if future_count:
+        print(f"Discarding {future_count} future-dated rows beyond {today_date.date()}.")
+    df = df[df["arrival_date"].notna() & (df["arrival_date"] <= today_date)].copy()
 
     df = df.sort_values(
         ["arrival_date", "market", "variety"]
