@@ -97,7 +97,9 @@ def main():
         f"data/historical/maharashtra_{COMMODITY.lower()}_2026_02_to_07.csv"
     )
     archive = pd.read_csv(archive_file) if archive_file.exists() else pd.DataFrame()
-    archive_dates = pd.to_datetime(archive.get("arrival_date"), errors="coerce")
+    # Archive CSVs use ISO dates (YYYY-MM-DD); API responses may use DD/MM/YYYY.
+    # Parse flexibly so the archive's real latest date is detected correctly.
+    archive_dates = pd.to_datetime(archive["arrival_date"], errors="coerce", dayfirst=True) if not archive.empty else pd.Series(dtype="datetime64[ns]")
     last_archive_date = archive_dates.max() if not archive.empty else pd.Timestamp(2026, 1, 31)
 
     first_month = (last_archive_date + pd.offsets.MonthBegin(1)).normalize()
@@ -134,10 +136,11 @@ def main():
     fresh = pd.DataFrame(fresh_rows)
     df = pd.concat([archive, fresh], ignore_index=True)
 
+    # Accept both archive ISO dates and API date strings without discarding ISO rows.
     df["arrival_date"] = pd.to_datetime(
         df["arrival_date"],
-        format="%d/%m/%Y",
         errors="coerce",
+        dayfirst=True,
     )
 
     df = df.sort_values(
