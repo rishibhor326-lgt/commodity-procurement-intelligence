@@ -82,13 +82,16 @@ if refresh_live:
             text=True,
             timeout=180,
         )
+    output = (result.stdout or "") + "\n" + (result.stderr or "")
     if result.returncode == 0:
         load_history.clear()
-        st.success("Data refresh completed. The dashboard will reload using the updated records.")
+        st.success("AGMARKNET refresh completed. Check the latest record date below.")
+        with st.expander("Refresh diagnostics"):
+            st.code(output[-5000:] or "The ingestion script returned no diagnostics.")
         st.rerun()
     else:
-        details = (result.stderr or result.stdout or "No diagnostic output returned.")[-3000:]
-        st.error("AGMARKNET refresh failed. Existing historical data is retained.")
+        details = output[-5000:] or "No diagnostic output returned."
+        st.error("AGMARKNET refresh failed. Existing historical data is retained; no fresh data was confirmed.")
         st.code(details)
 
 data = load_history(commodity)
