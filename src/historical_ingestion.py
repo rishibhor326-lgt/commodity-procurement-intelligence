@@ -84,6 +84,52 @@ def fetch_historical_data(year, month, state_id, commodity_id, max_retries=3):
             time.sleep(wait_seconds)
 
 
+def fetch_latest_fallback(state_name, commodity_name):
+    """
+    Fetch recent AGMARKNET-derived records from a documented community API
+    when the official monthly endpoint requires CAPTCHA. These are labelled
+    by their source arrival_date; this endpoint is a recent-record fallback,
+    not a replacement for the historical archive.
+    """
+    fallback_url = "https://mandi-api.onrender.com/v1/prices"
+    response = requests.get(
+        fallback_url,
+        params={"state": state_name, "commodity": commodity_name},
+        headers={"Accept": "application/json"},
+        timeout=(8, 45),
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict) or payload.get("success") is not True:
+        raise RuntimeError("Fallback mandi API returned an unexpected response.")
+    source_rows = payload.get("data")
+    if not isinstance(source_rows, list):
+        raise RuntimeError("Fallback mandi API response is missing its data list.")
+
+    rows = []
+    for item in source_rows:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("state", "")).strip().casefold() != state_name.casefold():
+            continue
+        if str(item.get("commodity", "")).strip().casefold() != commodity_name.casefold():
+            continue
+        rows.append({
+            "state": item.get("state", state_name),
+            "district": item.get("district"),
+            "market": item.get("market"),
+            "commodity": item.get("commodity", commodity_name),
+            "arrival_date": item.get("arrival_date"),
+            "variety": item.get("variety"),
+            "grade": item.get("grade"),
+            "arrivals_mt": item.get("arrivals_mt"),
+            "min_price": item.get("min_price"),
+            "max_price": item.get("max_price"),
+            "modal_price": item.get("modal_price"),
+        })
+    return rows
+
+
 def flatten_records(payload, state_name, commodity_name):
     rows = []
 
@@ -161,12 +207,24 @@ def main():
             fresh_rows.extend(rows)
             print(f"{year}-{month:02d}: {len(rows)} rows")
 
-    # Do not report a successful refresh unless the API returned new observations.
+    # The official monthly endpoint may require CAPTCHA. Fall back to a
+    # separate AGMARKNET-derived API for recent dated records, preserving the archive.
+    if not fresh_rows:
+        print("Official monthly endpoint returned no rows; trying recent-record fallback...")
+        try:
+            fresh_rows = fetch_latest_fallback("Maharashtra", COMMODITY)
+            print(f"Fallback source returned {len(fresh_rows)} matching rows.")
+        except (requests.RequestException, ValueError, RuntimeError) as error:
+            raise RuntimeError(
+                "Official AGMARKNET monthly refresh was blocked and the recent-record "
+                f"fallback failed ({type(error).__name__}: {error}). Existing data was preserved."
+            ) from error
+
+    # Do not report a successful refresh unless a source returned observations.
     if not fresh_rows:
         raise RuntimeError(
-            "AGMARKNET returned zero usable rows for all requested months. "
-            "The existing latest-data file was not overwritten. Check API availability "
-            "and the monthly response format."
+            "Both the official monthly endpoint and recent-record fallback returned "
+            "zero usable rows. The existing latest-data file was not overwritten."
         )
 
     fresh = pd.DataFrame(fresh_rows)
