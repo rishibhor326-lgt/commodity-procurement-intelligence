@@ -160,6 +160,36 @@ selected_market = st.selectbox(
     MARKETS,
 )
 
+# Generate dashboard outputs on first deployment/startup when they are absent.
+# Streamlit Cloud starts with a fresh filesystem, so generated model CSVs may not exist.
+MODEL_OUTPUTS = [
+    REPOSITORY_ROOT / "data" / "model" / "procurement_summary.csv",
+    REPOSITORY_ROOT / "data" / "model" / "forecast_7day.csv",
+    REPOSITORY_ROOT / "data" / "model" / "recent_7day_summary.csv",
+]
+
+if not all(path.exists() for path in MODEL_OUTPUTS):
+    with st.spinner("Preparing the initial dashboard data. This may take a few minutes..."):
+        env = os.environ.copy()
+        env["PROCUREMENT_COMMODITY"] = selected_commodity
+        env["PROCUREMENT_MARKET"] = selected_market
+        try:
+            subprocess.run(
+                [sys.executable, str(REPOSITORY_ROOT / "src" / "run_pipeline.py")],
+                check=True,
+                env=env,
+                cwd=REPOSITORY_ROOT,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as error:
+            st.error("The dashboard could not prepare its initial data.")
+            if error.stderr:
+                st.code(error.stderr[-4000:])
+            elif error.stdout:
+                st.code(error.stdout[-4000:])
+            st.stop()
+
 if st.button("Generate Forecast"):
 
     with st.spinner(
@@ -213,25 +243,24 @@ SUMMARY_URL = "http://127.0.0.1:8000/summary"
 FORECAST_URL = "http://127.0.0.1:8000/forecast"
 RECENT_URL = "http://127.0.0.1:8000/recent"
 
+def get_api_json(url):
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    try:
+        return response.json()
+    except ValueError as error:
+        raise RuntimeError(
+            f"API endpoint {url.rsplit('/', 1)[-1]} returned an invalid or empty response "
+            f"(HTTP {response.status_code})."
+        ) from error
+
+
 try:
-    summary_data = requests.get(
-        SUMMARY_URL,
-        timeout=5
-    ).json()
+    summary_data = get_api_json(SUMMARY_URL)
 
-    forecast_df = pd.DataFrame(
-        requests.get(
-            FORECAST_URL,
-            timeout=5
-        ).json()
-    )
+    forecast_df = pd.DataFrame(get_api_json(FORECAST_URL))
 
-    recent_df = pd.DataFrame(
-        requests.get(
-            RECENT_URL,
-            timeout=5
-        ).json()
-    )
+    recent_df = pd.DataFrame(get_api_json(RECENT_URL))
 
     st.caption(
         f"{summary_data['market']} — "
