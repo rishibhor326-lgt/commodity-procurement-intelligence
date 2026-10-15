@@ -41,7 +41,15 @@ def load_history(commodity):
     if not frames:
         return pd.DataFrame()
     df = pd.concat(frames, ignore_index=True)
-    df["arrival_date"] = pd.to_datetime(df["arrival_date"], errors="coerce")
+    # Parse ISO dates first, then day-first source dates; reject future observations.
+    raw_dates = df["arrival_date"].astype(str).str.strip()
+    iso_mask = raw_dates.str.match(r"^\d{4}-\d{2}-\d{2}")
+    parsed_dates = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
+    parsed_dates.loc[iso_mask] = pd.to_datetime(raw_dates.loc[iso_mask], format="%Y-%m-%d", errors="coerce")
+    parsed_dates.loc[~iso_mask] = pd.to_datetime(raw_dates.loc[~iso_mask], dayfirst=True, errors="coerce")
+    df["arrival_date"] = parsed_dates.dt.normalize()
+    today = pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize()
+    df = df[df["arrival_date"].notna() & (df["arrival_date"] <= today)]
     for col in ["modal_price", "min_price", "max_price", "arrivals_mt"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df["market"] = df["market"].astype(str).str.strip()
@@ -98,6 +106,11 @@ if market_df.empty:
     st.warning("There are no valid records for this market.")
     st.stop()
 
+today = pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize()
+market_df = market_df[market_df["arrival_date"] <= today].copy()
+if market_df.empty:
+    st.error("No valid observations dated today or earlier were found for this market. Refresh the data source.")
+    st.stop()
 latest = market_df.iloc[-1]
 prices = market_df["modal_price"].dropna()
 last7 = market_df.tail(7)
@@ -126,7 +139,8 @@ with left:
     st.subheader("Historical prices and 7-day baseline")
     history_chart = market_df.tail(45)[["arrival_date", "modal_price"]].rename(columns={"arrival_date": "Date", "modal_price": "Price"})
     history_chart["Series"] = "Historical modal price"
-    future_dates = pd.date_range(latest["arrival_date"] + timedelta(days=1), periods=7, freq="D")
+    forecast_start = max(latest["arrival_date"] + timedelta(days=1), pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize() + timedelta(days=1))
+    future_dates = pd.date_range(forecast_start, periods=7, freq="D")
     future_chart = pd.DataFrame({"Date": future_dates, "Price": [baseline] * 7, "Series": ["7-day baseline"] * 7})
     chart_data = pd.concat([history_chart, future_chart], ignore_index=True)
     chart = alt.Chart(chart_data).mark_line(point=True, strokeWidth=2.5).encode(
