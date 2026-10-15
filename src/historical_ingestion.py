@@ -15,11 +15,11 @@ HEADERS = {
     "Accept": "application/json, text/plain, */*",
     "Origin": "https://agmarknet.gov.in",
     "Referer": "https://agmarknet.gov.in/",
-    "User-Agent": "Mozilla/5.0",
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
 }
 
 
-def fetch_historical_data(year, month, state_id, commodity_id, max_retries=1):
+def fetch_historical_data(year, month, state_id, commodity_id, max_retries=3):
     params = {
         "year": year,
         "month": month,
@@ -42,7 +42,12 @@ def fetch_historical_data(year, month, state_id, commodity_id, max_retries=1):
                 timeout=(5, 20),
             )
 
-            response.raise_for_status()
+            if not response.ok:
+                body_preview = response.text[:400].replace("\\n", " ")
+                raise requests.HTTPError(
+                    f"HTTP {response.status_code} for {response.url}; response: {body_preview}",
+                    response=response,
+                )
             payload = response.json()
 
             if not payload.get("success"):
@@ -55,11 +60,11 @@ def fetch_historical_data(year, month, state_id, commodity_id, max_retries=1):
         except (requests.RequestException, ValueError, RuntimeError) as error:
             if attempt == max_retries:
                 raise RuntimeError(
-                    f"Failed to fetch {year}-{month:02d}"
+                    f"Failed to fetch {year}-{month:02d}: {type(error).__name__}: {error}"
                 ) from error
 
             wait_seconds = 2 ** attempt
-            print(f"Retrying in {wait_seconds} seconds...")
+            print(f"Request failed ({type(error).__name__}: {error}). Retrying in {wait_seconds} seconds...")
             time.sleep(wait_seconds)
 
 
