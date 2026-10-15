@@ -1,5 +1,8 @@
 from pathlib import Path
 from datetime import timedelta
+import os
+import subprocess
+import sys
 
 import altair as alt
 import numpy as np
@@ -52,9 +55,34 @@ def load_history(commodity):
 
 st.title("Commodity Procurement Intelligence")
 st.caption("Explore historical mandi prices, market activity, volatility and a transparent 7-day baseline estimate.")
-st.info("Data note: the dashboard uses historical CSVs committed with this project. Live AGMARKNET refresh is not guaranteed. The 7-day estimate is a simple baseline, not a trained machine-learning forecast.")
+st.info("Data source: bundled historical AGMARKNET records plus an on-demand refresh attempt. The newest date shown below is the latest record actually available; AGMARKNET may publish prices with a delay. The current 7-day line is a transparent baseline estimate, not a trained ML forecast.")
 
 commodity = st.selectbox("Select commodity", COMMODITIES, index=1)
+
+refresh_col, status_col = st.columns([1, 3])
+with refresh_col:
+    refresh_live = st.button("Refresh latest AGMARKNET data", type="primary", use_container_width=True)
+if refresh_live:
+    with st.spinner("Fetching the latest available AGMARKNET records. This may take a minute..."):
+        env = os.environ.copy()
+        env["PROCUREMENT_COMMODITY"] = commodity
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "src" / "historical_ingestion.py")],
+            cwd=str(ROOT),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    if result.returncode == 0:
+        load_history.clear()
+        st.success("Data refresh completed. The dashboard will reload using the updated records.")
+        st.rerun()
+    else:
+        details = (result.stderr or result.stdout or "No diagnostic output returned.")[-3000:]
+        st.error("AGMARKNET refresh failed. Existing historical data is retained.")
+        st.code(details)
+
 data = load_history(commodity)
 if data.empty:
     st.error(f"No valid historical records found for {commodity}. Check the CSV in data/historical.")
