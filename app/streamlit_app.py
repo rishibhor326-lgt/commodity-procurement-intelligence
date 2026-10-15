@@ -170,15 +170,20 @@ MODEL_OUTPUTS = [
 
 if not all(path.exists() for path in MODEL_OUTPUTS):
     with st.spinner("Preparing the initial dashboard data. This may take a few minutes..."):
-        env = os.environ.copy()
-        env["PROCUREMENT_COMMODITY"] = selected_commodity
-        env["PROCUREMENT_MARKET"] = selected_market
+        # Pass only valid string environment values to subprocess (Python 3.14 is strict).
+        env = {
+            str(key): str(value)
+            for key, value in os.environ.items()
+            if value is not None
+        }
+        env["PROCUREMENT_COMMODITY"] = str(selected_commodity)
+        env["PROCUREMENT_MARKET"] = str(selected_market)
         try:
             subprocess.run(
                 [sys.executable, str(REPOSITORY_ROOT / "src" / "run_pipeline.py")],
                 check=True,
                 env=env,
-                cwd=REPOSITORY_ROOT,
+                cwd=str(REPOSITORY_ROOT),
                 capture_output=True,
                 text=True,
             )
